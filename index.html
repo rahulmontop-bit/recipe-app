@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Kitchen AI Assistant</title>
+  <style>
+    :root {
+      --bg-color: #121212;
+      --card-bg: #1e1e1e;
+      --text-color: #f0f0f0;
+      --accent-color: #ff6b6b;
+      --mic-active: #2ec4b6;
+      --base-font-size: 18px;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: var(--base-font-size);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    header {
+      width: 100%;
+      padding: 20px;
+      text-align: center;
+      background-color: var(--card-bg);
+      box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    h1 {
+      margin: 0 0 10px 0;
+      font-size: 1.8em;
+    }
+
+    .mic-container {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin: 15px 0;
+    }
+
+    #mic-btn {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      border: none;
+      background-color: var(--accent-color);
+      color: white;
+      font-size: 32px;
+      cursor: pointer;
+      box-shadow: 0 0 15px rgba(255, 107, 107, 0.4);
+      transition: all 0.3s ease;
+    }
+
+    #mic-btn.listening {
+      background-color: var(--mic-active);
+      box-shadow: 0 0 25px rgba(46, 196, 182, 0.8);
+      transform: scale(1.1);
+    }
+
+    #status {
+      margin-top: 8px;
+      font-size: 0.9em;
+      color: #aaa;
+    }
+
+    #transcript {
+      font-style: italic;
+      color: var(--accent-color);
+      min-height: 24px;
+      margin-top: 5px;
+    }
+
+    main {
+      width: 90%;
+      max-width: 800px;
+      margin: 20px auto;
+      line-height: 1.6;
+    }
+
+    #recipe-card {
+      background-color: var(--card-bg);
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+      display: none;
+    }
+
+    .command-list {
+      font-size: 0.8em;
+      color: #888;
+      border-top: 1px solid #333;
+      margin-top: 10px;
+      padding-top: 10px;
+    }
+
+    /* Markdown Styling inside Recipe Card */
+    #recipe-card h1, #recipe-card h2 { color: var(--accent-color); }
+    #recipe-card ul, #recipe-card ol { padding-left: 20px; }
+    #recipe-card li { margin-bottom: 8px; }
+  </style>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+
+  <header>
+    <h1>What do you want to cook today?</h1>
+    <div class="mic-container">
+      <button id="mic-btn">🎙️</button>
+    </div>
+    <div id="status">Tap the mic and speak continuous commands</div>
+    <div id="transcript"></div>
+    <div class="command-list">
+      <b>Supported Voice Commands:</b> "[Recipe Name]" | "Scroll Down" | "Scroll Up" | "Increase Font Size" | "Decrease Font Size"
+    </div>
+  </header>
+
+  <main>
+    <div id="recipe-card"></div>
+  </main>
+
+  <script>
+    // Config: Enter your Gemini API Key here
+    const GEMINI_API_KEY = "AQ.Ab8RN6LGImQ1TjyJm9HI7rmsIECRBLQxh7C_aAXOcS67sfe7zg"; 
+
+    // DOM Elements
+    const micBtn = document.getElementById('mic-btn');
+    const statusText = document.getElementById('status');
+    const transcriptDiv = document.getElementById('transcript');
+    const recipeCard = document.getElementById('recipe-card');
+
+    let currentFontSize = 18;
+    let isListening = false;
+    let recognition;
+
+    // Initialize Web Speech API
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      statusText.textContent = "Speech Recognition API not supported on this browser.";
+    } else {
+      recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = false;
+      recognition.lang = 'en-US';
+
+      recognition.onstart = () => {
+        isListening = true;
+        micBtn.classList.add('listening');
+        statusText.textContent = "Listening... (Speak your request or command)";
+      };
+
+      recognition.onend = () => {
+        // Auto-restart recognition if continuous mode drops on iPadOS
+        if (isListening) {
+          recognition.start();
+        } else {
+          micBtn.classList.remove('listening');
+          statusText.textContent = "Tap the mic to start listening again.";
+        }
+      };
+
+      recognition.onresult = (event) => {
+        const lastIndex = event.results.length - 1;
+        const phrase = event.results[lastIndex][0].transcript.trim().toLowerCase();
+        transcriptDiv.textContent = `Heard: "${phrase}"`;
+        handleVoiceCommand(phrase);
+      };
+
+      micBtn.addEventListener('click', () => {
+        if (isListening) {
+          isListening = false;
+          recognition.stop();
+        } else {
+          recognition.start();
+        }
+      });
+    }
+
+    // Command Logic & Router
+    function handleVoiceCommand(phrase) {
+      if (phrase.includes("scroll down")) {
+        window.scrollBy({ top: 400, behavior: 'smooth' });
+      } else if (phrase.includes("scroll up")) {
+        window.scrollBy({ top: -400, behavior: 'smooth' });
+      } else if (phrase.includes("increase font") || phrase.includes("bigger text")) {
+        currentFontSize += 3;
+        document.body.style.setProperty('--base-font-size', `${currentFontSize}px`);
+      } else if (phrase.includes("decrease font") || phrase.includes("reduce font") || phrase.includes("smaller text")) {
+        currentFontSize = Math.max(12, currentFontSize - 3);
+        document.body.style.setProperty('--base-font-size', `${currentFontSize}px`);
+      } else if (phrase.length > 3) {
+        // Assume any other spoken input is a recipe request
+        fetchRecipe(phrase);
+      }
+    }
+
+    // Fetch Recipe using Gemini API
+    async function fetchRecipe(query) {
+      recipeCard.style.display = 'block';
+      recipeCard.innerHTML = `<p>⏳ Generating recipe for <strong>"${query}"</strong>...</p>`;
+      
+      const prompt = `Create a clear, step-by-step cooking recipe for: "${query}". 
+Include: 
+1. Preparation Time and Cooking Time
+2. Required Equipment
+3. Ingredients List
+4. Step-by-Step Cooking Instructions.
+Format the output using clear HTML-friendly Markdown with bold headings.`;
+
+      try {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }]
+          })
+        });
+
+        const data = await response.json();
+        const markdownText = data.candidates[0].content.parts[0].text;
+        recipeCard.innerHTML = marked.parse(markdownText);
+        
+        // Scroll down to the newly generated recipe smoothly
+        recipeCard.scrollIntoView({ behavior: 'smooth' });
+      } catch (err) {
+        recipeCard.innerHTML = `<p style="color: #ff6b6b;">Failed to load recipe. Please check your API key or network connection.</p>`;
+      }
+    }
+  </script>
+</body>
+</html>
